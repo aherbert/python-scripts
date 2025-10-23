@@ -25,40 +25,43 @@ def main():
         default=starttime,
         help="Start date for HQL query (default: %(default)s)",
     )
+    parser.add_argument(
+        "--sep",
+        default="\t",
+        help="Separator for output (defaults to tab)",
+    )
     args = parser.parse_args()
 
     with cli_login() as cli:
         conn = BlitzGateway(client_obj=cli._client)
         query_service = conn.getQueryService()
 
+        print("ID", "OME Name", "email", "Name", "Count", "Latest", sep=args.sep)
+
         # https://omero.readthedocs.io/en/stable/developers/Model/EveryObject.html#session
         # https://omero.readthedocs.io/en/stable/developers/Model/EveryObject.html#experimenter
         params = omero.sys.ParametersI()
-        # offset = 0
-        # limit = 1000
-        # params.page(offset, limit)
 
-        # HQL is a bit limited here. Ideally we would want to select the top 1 experimenter and started date
-        # when grouped by experimenter and ordered by started date descending, i.e. the most recent session
-        # for each user.
-        # This orders by the started date but cannot return the actual date!
-        query = f"""select e from Session as s
+        # Select the most recent session for each user, and count the sessions.
+        query = f"""select e.id, e.omeName, e.email, e.firstName, e.lastName, count(e.id), max(s.started) from Session as s
             left join s.owner as e
             where s.started > '{args.start}'
             group by e
             order by max(s.started) desc
         """
-        results = query_service.findAllByQuery(query, params, None)
-        for owner in results:
-            omeName = unwrap(owner.omeName)
+        results = query_service.projection(query, params, None)
+        for id, omeName, email, firstName, lastName, count, started in results:
+            omeName = unwrap(omeName)
             if omeName in ["root", "guest"]:
                 continue
             print(
-                unwrap(owner.id),
+                unwrap(id),
                 omeName,
-                unwrap(owner.email),
-                unwrap(owner.firstName),
-                unwrap(owner.lastName),
+                unwrap(email),
+                " ".join([unwrap(firstName), unwrap(lastName)]),
+                unwrap(count),
+                str(datetime.fromtimestamp(unwrap(started) / 1000)),
+                sep=args.sep,
             )
 
 
